@@ -4,10 +4,11 @@ using UnityEngine.UI;
 using PimDeWitte.UnityMainThreadDispatcher;
 using Newtonsoft.Json;
 using System.Collections.Generic;
-using System.Threading.Tasks;
+
 
 public class ShopManager : MonoBehaviour
 {
+
     FirebaseDatabase database;
     DatabaseReference reference;
     UnityMainThreadDispatcher dispatcher;
@@ -21,15 +22,16 @@ public class ShopManager : MonoBehaviour
     int currentCoin;
     Dictionary<string, int> inventory = new Dictionary<string, int>();
 
+
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
         database = FirebaseDatabase.GetInstance(
-            "https://shingutest-857de-default-rtdb.asia-southeast1.firebasedatabase.app/"
-        );
+           "https://shingutest-857de-default-rtdb.asia-southeast1.firebasedatabase.app/"
+       );
 
         reference = database.RootReference;
-        dispatcher = new UnityMainThreadDispatcher.Instance();
+        dispatcher = UnityMainThreadDispatcher.Instance();
 
         LoadUserData();
     }
@@ -43,34 +45,108 @@ public class ShopManager : MonoBehaviour
             MessageText.text = "로그인 정보가 없습니다.";
             return;
         }
-    }
 
-    reference.Child("UserInfo").Child(userKey).GetValueAsync().ContinueWith(task =>
-    {
-        if(task.IsFaulted)
+        reference.Child("UserInfo").Child(userKey).GetValueAsync().ContinueWith(task =>
         {
-            dispatcher.Enqueue(() =>
+            if (task.IsFaulted)
             {
-                MessageText.text = "유저 정보 불러오기 실패";
-            });
+                dispatcher.Enqueue(() =>
+                {
+                    MessageText.text = "유저 정보 불러오시 실패";
+                });
 
-            return;
-        }
+                return;
+            }
 
-        if (task.Iscompleted)
-        {
-            DataSnapshot snapshot = task.Result;
-            currentCoin = int.Parse(snapshot.Child("Coin").Value.ToString());
-        }
-    };
+            if (task.IsCompleted)
+            {
+                DataSnapshot snapshot = task.Result;
+                currentCoin = int.Parse(snapshot.Child("Coin").Value.ToString());
+                string inventoryJson = snapshot.Child("Inventory").Value.ToString();
+
+                inventory = JsonConvert.DeserializeObject<Dictionary<string, int>>(inventoryJson);
+
+                dispatcher.Enqueue(() =>
+                {
+                    RefreshUI();
+                    MessageText.text = "유저 정보 불러오기 완료";
+                });
+            }
+        });
+    }
 
     void RefreshUI()
     {
         CoinText.text = "Coin : " + currentCoin;
     }
-    // Update is called once per frame
-    void Update()
+
+    public void OnClickBuyPotion()
     {
-        
+        BuyItem("Potion", 100);
     }
+    public void OnClickBuyBomb()
+    {
+        BuyItem("Bomb", 50);
+    }
+    public void OnClickBuyTicket()
+    {
+        BuyItem("Ticket", 30);
+    }
+
+    void BuyItem(string itemName, int price)
+    {
+        if (currentCoin < price)
+        {
+            MessageText.text = "코인이 부족합니다.";
+            return;
+        }
+
+        currentCoin -= price;
+
+        if (inventory.ContainsKey(itemName))
+        {
+            inventory[itemName]++;
+        }
+        else
+        {
+            inventory.Add(itemName, 1);
+        }
+
+        SaveUserData(itemName);
+    }
+
+    void SaveUserData(string boughtItemName)
+    {
+        string inventoryJson = JsonConvert.SerializeObject(inventory);
+
+        Dictionary<string, object> updateData = new Dictionary<string, object>();
+
+        updateData["Coin"] = currentCoin;
+        updateData["Inventory"] = inventoryJson;
+
+        reference.Child("UserInfo").Child(userKey).UpdateChildrenAsync(updateData).ContinueWith(task =>
+        {
+            if (task.IsFaulted)
+            {
+                dispatcher.Enqueue(() =>
+                {
+                    MessageText.text = "구매 저장 실패";
+                });
+
+                return;
+            }
+
+            if (task.IsCompleted)
+            {
+                dispatcher.Enqueue(() =>
+                {
+                    RefreshUI();
+                    MessageText.text = boughtItemName + "구매 완료";
+                });
+
+            }
+        });
+    }
+
+
 }
