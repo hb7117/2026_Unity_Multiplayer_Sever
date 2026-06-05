@@ -115,7 +115,5 @@ namespace PimDeWitte.UnityMainThreadDispatcher {
 		void OnDestroy() {
 				_instance = null;
 		}
-
-
-	}
+    }
 }
